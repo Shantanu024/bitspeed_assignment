@@ -8,6 +8,18 @@ const pool = new Pool({
   connectionTimeoutMillis: 10000,
 });
 
+// Convert snake_case column names to camelCase
+function toCamelCase(obj: any): any {
+  if (!obj || typeof obj !== "object") return obj;
+  
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    result[camelKey] = value;
+  }
+  return result;
+}
+
 pool.on("error", (err) => {
   console.error("Database pool error:", err.message);
 });
@@ -58,7 +70,7 @@ export async function dbGet<T = any>(
 ): Promise<T | undefined> {
   try {
     const result = await pool.query(sql, params);
-    return result.rows[0] as T | undefined;
+    return result.rows[0] ? (toCamelCase(result.rows[0]) as T) : undefined;
   } catch (err) {
     console.error("dbGet error:", err);
     throw err;
@@ -72,7 +84,7 @@ export async function dbAll<T = any>(
 ): Promise<T[]> {
   try {
     const result = await pool.query(sql, params);
-    return result.rows as T[];
+    return result.rows.map(row => toCamelCase(row) as T);
   } catch (err) {
     console.error("dbAll error:", err);
     throw err;
@@ -92,7 +104,8 @@ export async function dbRun(
     if (result.rows && result.rows.length > 0) {
       const returnedRow = result.rows[0];
       if (returnedRow && typeof returnedRow === "object") {
-        lastID = returnedRow.id || 0;
+        // Handle both camelCase and lowercase 'id'
+        lastID = returnedRow.id || returnedRow.ID || 0;
       }
     }
     
