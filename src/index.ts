@@ -39,8 +39,8 @@ app.get("/", (_req: Request, res: Response) => {
 // ─── Error handler ───────────────────────────────────────────────────────────
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err);
-  res.status(500).json({ error: "Internal server error" });
+  console.error("❌ Error:", err.message, err.stack);
+  res.status(500).json({ error: "Internal server error", message: err.message });
 });
 
 // ─── Start server ─────────────────────────────────────────────────────────────
