@@ -9,13 +9,25 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000,
 });
 
-// Convert snake_case column names to camelCase
+// Convert PostgreSQL lowercase column names to camelCase
 function toCamelCase(obj: any): any {
   if (!obj || typeof obj !== "object") return obj;
   
   const result: any = {};
+  const columnMap: { [key: string]: string } = {
+    // Map lowercase PostgreSQL columns to camelCase
+    phonenumber: "phoneNumber",
+    linkedid: "linkedId",
+    linkprecedence: "linkPrecedence",
+    createdat: "createdAt",
+    updatedat: "updatedAt",
+    deletedat: "deletedAt",
+  };
+  
   for (const [key, value] of Object.entries(obj)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    const lowerKey = key.toLowerCase();
+    // Use mapping if available, otherwise try snake_case conversion, else use original
+    const camelKey = columnMap[lowerKey] || key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
     result[camelKey] = value;
   }
   return result;
@@ -98,7 +110,7 @@ export async function dbAll<T = any>(
 ): Promise<T[]> {
   try {
     const result = await queryWithRetry(sql, params);
-    return result.rows.map(row => toCamelCase(row) as T);
+    return result.rows.map((row: any) => toCamelCase(row) as T);
   } catch (err) {
     console.error("dbAll error:", err);
     throw err;

@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const identify_1 = require("./identify");
+const db_1 = require("./db");
 const app = (0, express_1.default)();
 app.use(express_1.default.json());
 // ─── POST /identify ──────────────────────────────────────────────────────────
@@ -31,12 +32,23 @@ app.get("/", (_req, res) => {
 });
 // ─── Error handler ───────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
-    console.error(err);
+    console.error("Error:", err.message, err.stack);
     res.status(500).json({ error: "Internal server error" });
 });
 // ─── Start server ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-});
+async function startServer() {
+    try {
+        // Wait for database to initialize before starting server
+        await db_1.dbReady;
+        app.listen(PORT, () => {
+            console.log(`🚀 Server running on port ${PORT}`);
+        });
+    }
+    catch (err) {
+        console.error("Failed to start server:", err);
+        process.exit(1);
+    }
+}
+startServer();
 exports.default = app;

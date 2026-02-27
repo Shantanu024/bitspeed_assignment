@@ -9,9 +9,13 @@ async function getContactById(id) {
 async function getPrimaryContact(contact) {
     if (contact.linkPrecedence === "primary")
         return contact;
+    if (!contact.linkedId) {
+        throw new Error(`Secondary contact ${contact.id} has invalid linkedId`);
+    }
     const primary = await getContactById(contact.linkedId);
-    if (!primary)
-        throw new Error(`Primary contact ${contact.linkedId} not found`);
+    if (!primary) {
+        throw new Error(`Primary contact not found`);
+    }
     return primary;
 }
 /** Fetch all contacts in a cluster (primary + all its secondaries) */
@@ -21,8 +25,17 @@ async function getCluster(primaryId) {
 }
 /** Build the consolidated response from a primary's cluster */
 async function buildResponse(primaryId) {
+    if (!primaryId || primaryId <= 0) {
+        throw new Error(`Invalid primaryId: ${primaryId}`);
+    }
     const cluster = await getCluster(primaryId);
+    if (!cluster || cluster.length === 0) {
+        throw new Error(`No contacts found in cluster for primaryId: ${primaryId}`);
+    }
     const primary = cluster.find((c) => c.id === primaryId);
+    if (!primary) {
+        throw new Error(`Primary contact with id ${primaryId} not found in cluster`);
+    }
     const secondaries = cluster.filter((c) => c.id !== primaryId);
     const emails = [];
     const phoneNumbers = [];
@@ -38,7 +51,7 @@ async function buildResponse(primaryId) {
             phoneNumbers.push(sec.phoneNumber);
     }
     return {
-        primaryContatctId: primaryId,
+        primaryContactId: primaryId,
         emails,
         phoneNumbers,
         secondaryContactIds: secondaries.map((s) => s.id),
@@ -47,6 +60,10 @@ async function buildResponse(primaryId) {
 // ─── Main identify function ──────────────────────────────────────────────────
 async function identify(email, phoneNumber) {
     const now = new Date().toISOString();
+    // Validate input
+    if (!email && !phoneNumber) {
+        throw new Error("At least one of email or phoneNumber is required.");
+    }
     // 1. Find all contacts matching either email or phoneNumber
     let conditions = [];
     let params = [];
@@ -60,12 +77,15 @@ async function identify(email, phoneNumber) {
         params.push(phoneNumber);
     }
     const whereClause = conditions.join(" OR ");
-    const directMatches = await (0, db_1.dbAll)(`SELECT * FROM Contact WHERE (${whereClause}) AND deletedAt IS NULL`, params.filter((p) => p !== undefined));
+    const directMatches = await (0, db_1.dbAll)(`SELECT * FROM Contact WHERE (${whereClause}) AND deletedAt IS NULL`, params);
     // 2. No matches → brand new primary contact
     if (directMatches.length === 0) {
         const result = await (0, db_1.dbRun)(`INSERT INTO Contact (phoneNumber, email, linkedId, linkPrecedence, createdAt, updatedAt)
        VALUES ($1, $2, NULL, 'primary', $3, $4)
        RETURNING id`, [phoneNumber ?? null, email ?? null, now, now]);
+        if (!result.lastID || result.lastID === 0) {
+            throw new Error(`Failed to create new contact`);
+        }
         return buildResponse(result.lastID);
     }
     // 3. Collect all unique primaries across matched contacts
