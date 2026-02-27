@@ -46,7 +46,7 @@ async function buildResponse(primaryId: number): Promise<ConsolidatedContact> {
   }
 
   return {
-    primaryContatctId: primaryId,
+    primaryContactId: primaryId,
     emails,
     phoneNumbers,
     secondaryContactIds: secondaries.map((s) => s.id),

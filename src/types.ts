@@ -10,7 +10,7 @@ export interface Contact {
 }
 
 export interface ConsolidatedContact {
-  primaryContatctId: number;
+  primaryContactId: number;
   emails: string[];
   phoneNumbers: string[];
   secondaryContactIds: number[];
