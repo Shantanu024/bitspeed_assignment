@@ -10,7 +10,9 @@ const sqlite3_1 = __importDefault(require("sqlite3"));
 const path_1 = __importDefault(require("path"));
 // Use /data directory on Render (persistent disk), or local path in development
 const DB_DIR = process.env.NODE_ENV === "production" ? "/data" : __dirname;
-const DB_PATH = path_1.default.join(DB_DIR, "..", "contacts.db");
+const DB_PATH = process.env.NODE_ENV === "production"
+    ? "/data/contacts.db"
+    : path_1.default.join(__dirname, "..", "contacts.db");
 const db = new sqlite3_1.default.Database(DB_PATH);
 // Enabled WAL mode for better performance
 db.run("PRAGMA journal_mode = WAL");

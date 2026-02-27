@@ -3,7 +3,9 @@ import path from "path";
 
 // Use /data directory on Render (persistent disk), or local path in development
 const DB_DIR = process.env.NODE_ENV === "production" ? "/data" : __dirname;
-const DB_PATH = path.join(DB_DIR, "..", "contacts.db");
+const DB_PATH = process.env.NODE_ENV === "production" 
+  ? "/data/contacts.db" 
+  : path.join(__dirname, "..", "contacts.db");
 
 const db = new sqlite3.Database(DB_PATH);
 
