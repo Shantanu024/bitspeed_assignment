@@ -75,15 +75,36 @@ export async function dbRun(
 ): Promise<{ lastID: number; changes: number }> {
   try {
     const result = await pool.query(sql, params);
-    // For INSERT, get the lastInsertRowid from RETURNING clause
-    const lastID = result.rows[0]?.id;
+    console.log("dbRun query result:", {
+      rowCount: result.rowCount,
+      rows: result.rows,
+      command: result.command,
+    });
     
-    if (sql.toUpperCase().includes("RETURNING") && !lastID) {
-      console.error("dbRun error: RETURNING id failed. Result:", result.rows);
-      throw new Error(`Failed to get returned id from query. Result rows: ${JSON.stringify(result.rows)}`);
+    // For INSERT with RETURNING, get the id from the returned row
+    let lastID = 0;
+    if (result.rows && result.rows.length > 0) {
+      const returnedRow = result.rows[0];
+      console.log("First returned row:", returnedRow);
+      
+      // Try to get id from the returned row
+      if (returnedRow && typeof returnedRow === "object") {
+        // Check various possible column names
+        lastID = returnedRow.id || returnedRow.ID || returnedRow.lastID || 0;
+        console.log("Extracted lastID:", lastID, "from row:", returnedRow);
+      }
     }
     
-    return { lastID: lastID || 0, changes: result.rowCount || 0 };
+    if (sql.toUpperCase().includes("RETURNING") && (!lastID || lastID === 0)) {
+      console.error("dbRun error: RETURNING failed to extract ID. Full result:", {
+        rowCount: result.rowCount,
+        rows: result.rows,
+        command: result.command,
+      });
+      throw new Error(`Failed to get returned id. Result: ${JSON.stringify(result.rows)}`);
+    }
+    
+    return { lastID, changes: result.rowCount || 0 };
   } catch (err) {
     console.error("dbRun error:", err);
     throw err;
