@@ -33,6 +33,14 @@ async function initDatabase() {
       );
     `);
     console.log("✅ Database schema initialized");
+    
+    // Clean up any corrupted data: delete secondary contacts with null linkedId
+    const cleanupResult = await pool.query(
+      `DELETE FROM Contact WHERE linkPrecedence = 'secondary' AND linkedId IS NULL AND deletedAt IS NULL`
+    );
+    if (cleanupResult.rowCount > 0) {
+      console.log(`⚠️  Cleaned up ${cleanupResult.rowCount} corrupted secondary contact(s)`);
+    }
   } catch (err) {
     console.error("Database init error:", err);
   }
