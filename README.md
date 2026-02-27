@@ -35,8 +35,8 @@ Find or create a customer identity by email and/or phone number. If matching con
 
 ```json
 {
-  "email": "user@example.com",      // optional, but at least one required
-  "phoneNumber": "+1234567890"      // optional, but at least one required
+  "email": "user@example.com",      
+  "phoneNumber": "+1234567890"      
 }
 ```
 
@@ -118,76 +118,6 @@ The API uses a simple but powerful algorithm to consolidate customer identities:
    - Return the consolidated cluster
 
 **Result:** No matter how a customer contacts you, you can always identify them uniquely!
-
----
-
-## Deployment 🌐
-
-### Deploy to Render.com (Free!)
-
-1. **Push your code to GitHub** (if you haven't already)
-
-2. **Sign up on** [render.com](https://render.com) and connect your GitHub account
-
-3. **Create a new Web Service:**
-   - Select your repository
-   - Set **Build Command:** `npm install && npm run build`
-   - Set **Start Command:** `npm start`
-
-4. **Add Environment Variables:**
-   - `DATABASE_URL` - Your PostgreSQL connection string
-   - `NODE_ENV` - Set to `production`
-   - `PORT` - (Optional, Render sets this automatically)
-
-5. **Deploy!** 🚀 Render will automatically rebuild on each GitHub push
-
-Your live API will be available at: `https://your-app.onrender.com`
-
----
-
-## Example Usage 📝
-
-### Create a New Customer
-
-```bash
-curl -X POST https://bitspeed-assignment-5jrz.onrender.com/identify \
-  -H "Content-Type: application/json" \
-  -d '{"email": "john@example.com", "phoneNumber": "+1234567890"}'
-```
-
-**Response:**
-```json
-{
-  "contact": {
-    "primaryContactId": 1,
-    "emails": ["john@example.com"],
-    "phoneNumbers": ["+1234567890"],
-    "secondaryContactIds": []
-  }
-}
-```
-
-### Link a Second Device
-
-```bash
-curl -X POST https://bitspeed-assignment-5jrz.onrender.com/identify \
-  -H "Content-Type: application/json" \
-  -d '{"email": "john@example.com", "phoneNumber": "+9876543210"}'
-```
-
-**Response:**
-```json
-{
-  "contact": {
-    "primaryContactId": 1,
-    "emails": ["john@example.com"],
-    "phoneNumbers": ["+1234567890", "+9876543210"],
-    "secondaryContactIds": [2]
-  }
-}
-```
-
-Now John is recognized whether he uses his original phone or a new phone!
 
 ---
 
