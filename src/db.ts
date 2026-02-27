@@ -34,12 +34,22 @@ async function initDatabase() {
     `);
     console.log("✅ Database schema initialized");
     
-    // Clean up any corrupted data: delete secondary contacts with null linkedId
-    const cleanupResult = await pool.query(
-      `DELETE FROM Contact WHERE linkPrecedence = 'secondary' AND linkedId IS NULL AND deletedAt IS NULL`
+    // Clean up corrupted data: 
+    // 1. Delete secondary contacts with null linkedId
+    const deleteResult = await pool.query(
+      `DELETE FROM Contact WHERE linkPrecedence = 'secondary' AND linkedId IS NULL`
     );
-    if (cleanupResult.rowCount && cleanupResult.rowCount > 0) {
-      console.log(`⚠️  Cleaned up ${cleanupResult.rowCount} corrupted secondary contact(s)`);
+    if (deleteResult.rowCount && deleteResult.rowCount > 0) {
+      console.log(`⚠️  Deleted ${deleteResult.rowCount} corrupted secondary contact(s) with null linkedId`);
+    }
+    
+    // 2. Convert secondary contacts with non-existent linkedId to primary
+    const convertResult = await pool.query(
+      `UPDATE Contact SET linkPrecedence = 'primary', linkedId = NULL, updatedAt = NOW()
+       WHERE linkPrecedence = 'secondary' AND linkedId NOT IN (SELECT id FROM Contact WHERE deletedAt IS NULL)`
+    );
+    if (convertResult.rowCount && convertResult.rowCount > 0) {
+      console.log(`⚠️  Converted ${convertResult.rowCount} orphaned secondary contact(s) to primary`);
     }
   } catch (err) {
     console.error("Database init error:", err);

@@ -14,13 +14,16 @@ async function getPrimaryContact(contact: Contact): Promise<Contact> {
   if (contact.linkPrecedence === "primary") return contact;
   
   // Safety check: secondary contacts must have a valid linkedId
-  if (!contact.linkedId) {
-    console.error("Invalid secondary contact:", contact);
-    throw new Error(`Secondary contact ${contact.id} has invalid linkedId: ${contact.linkedId}`);
+  if (!contact.linkedId || contact.linkedId <= 0) {
+    console.error("⚠️  Invalid secondary contact found:", JSON.stringify(contact));
+    throw new Error(`Secondary contact ${contact.id} has invalid linkedId: ${contact.linkedId} (type: ${typeof contact.linkedId})`);
   }
   
   const primary = await getContactById(contact.linkedId);
-  if (!primary) throw new Error(`Primary contact ${contact.linkedId} not found`);
+  if (!primary) {
+    console.error(`⚠️  Primary contact ${contact.linkedId} not found for secondary contact ${contact.id}`);
+    throw new Error(`Primary contact ${contact.linkedId} not found`);
+  }
   return primary;
 }
 
