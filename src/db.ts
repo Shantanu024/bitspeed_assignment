@@ -3,9 +3,10 @@ import { Pool } from "pg";
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-  max: 5,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  max: 3,
+  min: 1,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 5000,
 });
 
 // Convert snake_case column names to camelCase
@@ -24,12 +25,10 @@ pool.on("error", (err) => {
   console.error("Database pool error:", err.message);
 });
 
-// Connection event listener for debugging (optional)
-
 // Initialize database schema
 async function initDatabase() {
   try {
-    await pool.query(`
+    await queryWithRetry(`
       CREATE TABLE IF NOT EXISTS Contact (
         id              SERIAL PRIMARY KEY,
         phoneNumber     TEXT,
@@ -46,18 +45,32 @@ async function initDatabase() {
     
     // Clean up corrupted data: 
     // 1. Delete secondary contacts with null linkedId
-    const deleteResult = await pool.query(
+    await queryWithRetry(
       `DELETE FROM Contact WHERE linkPrecedence = 'secondary' AND linkedId IS NULL`
     );
     
     // 2. Convert secondary contacts with non-existent linkedId to primary
-    const convertResult = await pool.query(
+    await queryWithRetry(
       `UPDATE Contact SET linkPrecedence = 'primary', linkedId = NULL, updatedAt = NOW()
        WHERE linkPrecedence = 'secondary' AND linkedId NOT IN (SELECT id FROM Contact WHERE deletedAt IS NULL)`
     );
-    // Silently handle cleanup
   } catch (err) {
     console.error("Database init error:", err);
+  }
+}
+
+// Wrapper for pool queries with automatic reconnection
+async function queryWithRetry(sql: string, params: any[] = [], retries: number = 2): Promise<any> {
+  try {
+    return await pool.query(sql, params);
+  } catch (err: any) {
+    // Retry on connection errors
+    if (retries > 0 && (err.message.includes("ECONNREFUSED") || err.message.includes("connection") || err.message.includes("timeout"))) {
+      console.warn(`Query failed, retrying... (${retries} retries left)`, err.message);
+      await new Promise(resolve => setTimeout(resolve, 100)); // Brief delay before retry
+      return queryWithRetry(sql, params, retries - 1);
+    }
+    throw err;
   }
 }
 
@@ -69,7 +82,7 @@ export async function dbGet<T = any>(
   params: any[] = []
 ): Promise<T | undefined> {
   try {
-    const result = await pool.query(sql, params);
+    const result = await queryWithRetry(sql, params);
     return result.rows[0] ? (toCamelCase(result.rows[0]) as T) : undefined;
   } catch (err) {
     console.error("dbGet error:", err);
@@ -83,7 +96,7 @@ export async function dbAll<T = any>(
   params: any[] = []
 ): Promise<T[]> {
   try {
-    const result = await pool.query(sql, params);
+    const result = await queryWithRetry(sql, params);
     return result.rows.map(row => toCamelCase(row) as T);
   } catch (err) {
     console.error("dbAll error:", err);
@@ -97,7 +110,7 @@ export async function dbRun(
   params: any[] = []
 ): Promise<{ lastID: number; changes: number }> {
   try {
-    const result = await pool.query(sql, params);
+    const result = await queryWithRetry(sql, params);
     
     // For INSERT with RETURNING, get the id from the returned row
     let lastID = 0;
