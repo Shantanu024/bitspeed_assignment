@@ -9,12 +9,10 @@ const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  console.error("Unexpected error on idle client:", err.message);
+  console.error("Database pool error:", err.message);
 });
 
-pool.on("connect", () => {
-  console.log("✅ Database connection established");
-});
+// Connection event listener for debugging (optional)
 
 // Initialize database schema
 async function initDatabase() {
@@ -39,8 +37,6 @@ async function initDatabase() {
     const deleteResult = await pool.query(
       `DELETE FROM Contact WHERE linkPrecedence = 'secondary' AND linkedId IS NULL`
     );
-    if (deleteResult.rowCount && deleteResult.rowCount > 0) {
-      console.log(`⚠️  Deleted ${deleteResult.rowCount} corrupted secondary contact(s) with null linkedId`);
     }
     
     // 2. Convert secondary contacts with non-existent linkedId to primary
@@ -48,9 +44,7 @@ async function initDatabase() {
       `UPDATE Contact SET linkPrecedence = 'primary', linkedId = NULL, updatedAt = NOW()
        WHERE linkPrecedence = 'secondary' AND linkedId NOT IN (SELECT id FROM Contact WHERE deletedAt IS NULL)`
     );
-    if (convertResult.rowCount && convertResult.rowCount > 0) {
-      console.log(`⚠️  Converted ${convertResult.rowCount} orphaned secondary contact(s) to primary`);
-    }
+    // Silently handle cleanup
   } catch (err) {
     console.error("Database init error:", err);
   }
@@ -63,13 +57,8 @@ export async function dbGet<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T | undefined> {
-  try {
-    const result = await pool.query(sql, params);
-    return result.rows[0] as T | undefined;
-  } catch (err) {
-    console.error("dbGet error:", err);
-    throw err;
-  }
+  const result = await pool.query(sql, params);
+  return result.rows[0] as T | undefined;
 }
 
 // Helper function to get all rows
@@ -77,13 +66,8 @@ export async function dbAll<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T[]> {
-  try {
-    const result = await pool.query(sql, params);
-    return result.rows as T[];
-  } catch (err) {
-    console.error("dbAll error:", err);
-    throw err;
-  }
+  const result = await pool.query(sql, params);
+  return result.rows as T[];
 }
 
 // Helper function to run insert/update/delete
@@ -93,33 +77,18 @@ export async function dbRun(
 ): Promise<{ lastID: number; changes: number }> {
   try {
     const result = await pool.query(sql, params);
-    console.log("dbRun query result:", {
-      rowCount: result.rowCount,
-      rows: result.rows,
-      command: result.command,
-    });
     
     // For INSERT with RETURNING, get the id from the returned row
     let lastID = 0;
     if (result.rows && result.rows.length > 0) {
       const returnedRow = result.rows[0];
-      console.log("First returned row:", returnedRow);
-      
-      // Try to get id from the returned row
       if (returnedRow && typeof returnedRow === "object") {
-        // Check various possible column names
-        lastID = returnedRow.id || returnedRow.ID || returnedRow.lastID || 0;
-        console.log("Extracted lastID:", lastID, "from row:", returnedRow);
+        lastID = returnedRow.id || 0;
       }
     }
     
     if (sql.toUpperCase().includes("RETURNING") && (!lastID || lastID === 0)) {
-      console.error("dbRun error: RETURNING failed to extract ID. Full result:", {
-        rowCount: result.rowCount,
-        rows: result.rows,
-        command: result.command,
-      });
-      throw new Error(`Failed to get returned id. Result: ${JSON.stringify(result.rows)}`);
+      throw new Error("Failed to get returned id");
     }
     
     return { lastID, changes: result.rowCount || 0 };

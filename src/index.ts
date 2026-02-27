@@ -9,7 +9,6 @@ app.use(express.json());
 
 app.post("/identify", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    console.log("POST /identify received with body:", req.body);
     const { email, phoneNumber }: IdentifyRequest = req.body;
 
     // At least one of email or phoneNumber must be provided
@@ -25,10 +24,8 @@ app.post("/identify", async (req: Request, res: Response, next: NextFunction) =>
       phoneNumber !== undefined ? String(phoneNumber) : undefined
     );
 
-    console.log("✅ Identify response:", contact);
     res.status(200).json({ contact });
   } catch (err) {
-    console.error("❌ Identify error:", err);
     next(err);
   }
 });
@@ -42,8 +39,8 @@ app.get("/", (_req: Request, res: Response) => {
 // ─── Error handler ───────────────────────────────────────────────────────────
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("❌ Error:", err.message, err.stack);
-  res.status(500).json({ error: "Internal server error", message: err.message });
+  console.error("Error:", err.message);
+  res.status(500).json({ error: "Internal server error" });
 });
 
 // ─── Start server ─────────────────────────────────────────────────────────────
