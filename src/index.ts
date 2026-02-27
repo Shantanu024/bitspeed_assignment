@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import { identify } from "./identify";
+import { dbReady } from "./db";
 import { IdentifyRequest } from "./types";
 
 const app = express();
@@ -46,8 +47,21 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // ─── Start server ─────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+
+async function startServer() {
+  try {
+    // Wait for database to initialize before starting server
+    await dbReady;
+    
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 export default app;

@@ -3,9 +3,9 @@ import { Pool } from "pg";
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-  max: 3,
-  min: 1,
-  idleTimeoutMillis: 10000,
+  max: 5,
+  min: 0,
+  idleTimeoutMillis: 15000,
   connectionTimeoutMillis: 5000,
 });
 
@@ -74,7 +74,8 @@ async function queryWithRetry(sql: string, params: any[] = [], retries: number =
   }
 }
 
-initDatabase();
+// Export a promise that resolves when database is ready
+export const dbReady = initDatabase();
 
 // Helper function to get single row
 export async function dbGet<T = any>(
