@@ -38,7 +38,7 @@ async function initDatabase() {
     const cleanupResult = await pool.query(
       `DELETE FROM Contact WHERE linkPrecedence = 'secondary' AND linkedId IS NULL AND deletedAt IS NULL`
     );
-    if (cleanupResult.rowCount > 0) {
+    if (cleanupResult.rowCount && cleanupResult.rowCount > 0) {
       console.log(`⚠️  Cleaned up ${cleanupResult.rowCount} corrupted secondary contact(s)`);
     }
   } catch (err) {
