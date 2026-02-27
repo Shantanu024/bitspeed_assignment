@@ -28,8 +28,21 @@ async function getCluster(primaryId: number): Promise<Contact[]> {
 
 /** Build the consolidated response from a primary's cluster */
 async function buildResponse(primaryId: number): Promise<ConsolidatedContact> {
+  if (!primaryId || primaryId <= 0) {
+    throw new Error(`Invalid primaryId: ${primaryId}`);
+  }
+  
   const cluster = await getCluster(primaryId);
-  const primary = cluster.find((c) => c.id === primaryId)!;
+  
+  if (!cluster || cluster.length === 0) {
+    throw new Error(`No contacts found in cluster for primaryId: ${primaryId}`);
+  }
+  
+  const primary = cluster.find((c) => c.id === primaryId);
+  if (!primary) {
+    throw new Error(`Primary contact with id ${primaryId} not found in cluster`);
+  }
+  
   const secondaries = cluster.filter((c) => c.id !== primaryId);
 
   const emails: string[] = [];
@@ -61,9 +74,14 @@ export async function identify(
 ): Promise<ConsolidatedContact> {
   const now = new Date().toISOString();
 
+  // Validate input
+  if (!email && !phoneNumber) {
+    throw new Error("At least one of email or phoneNumber is required.");
+  }
+
   // 1. Find all contacts matching either email or phoneNumber
   let conditions: string[] = [];
-  let params: (string | undefined)[] = [];
+  let params: any[] = [];
   let paramIndex = 1;
 
   if (email) {
@@ -75,10 +93,14 @@ export async function identify(
     params.push(phoneNumber);
   }
 
+  if (conditions.length === 0) {
+    throw new Error("At least one of email or phoneNumber must be provided.");
+  }
+
   const whereClause = conditions.join(" OR ");
   const directMatches = await dbAll<Contact>(
     `SELECT * FROM Contact WHERE (${whereClause}) AND deletedAt IS NULL`,
-    params.filter((p) => p !== undefined) as string[]
+    params
   );
 
   // 2. No matches → brand new primary contact
@@ -89,6 +111,11 @@ export async function identify(
        RETURNING id`,
       [phoneNumber ?? null, email ?? null, now, now]
     );
+    
+    if (!result.lastID || result.lastID === 0) {
+      throw new Error(`Failed to create new contact. Got lastID: ${result.lastID}`);
+    }
+    
     return buildResponse(result.lastID);
   }
 

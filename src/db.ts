@@ -76,8 +76,14 @@ export async function dbRun(
   try {
     const result = await pool.query(sql, params);
     // For INSERT, get the lastInsertRowid from RETURNING clause
-    const lastID = result.rows[0]?.id || 0;
-    return { lastID, changes: result.rowCount || 0 };
+    const lastID = result.rows[0]?.id;
+    
+    if (sql.toUpperCase().includes("RETURNING") && !lastID) {
+      console.error("dbRun error: RETURNING id failed. Result:", result.rows);
+      throw new Error(`Failed to get returned id from query. Result rows: ${JSON.stringify(result.rows)}`);
+    }
+    
+    return { lastID: lastID || 0, changes: result.rowCount || 0 };
   } catch (err) {
     console.error("dbRun error:", err);
     throw err;
