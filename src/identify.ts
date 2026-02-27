@@ -28,19 +28,24 @@ async function getCluster(primaryId: number): Promise<Contact[]> {
 
 /** Build the consolidated response from a primary's cluster */
 async function buildResponse(primaryId: number): Promise<ConsolidatedContact> {
+  console.log("buildResponse called with primaryId:", primaryId, "type:", typeof primaryId);
+  
   if (!primaryId || primaryId <= 0) {
     throw new Error(`Invalid primaryId: ${primaryId}`);
   }
   
   const cluster = await getCluster(primaryId);
+  console.log(`Cluster for primaryId ${primaryId}:`, cluster.length, "contacts");
   
   if (!cluster || cluster.length === 0) {
     throw new Error(`No contacts found in cluster for primaryId: ${primaryId}`);
   }
   
   const primary = cluster.find((c) => c.id === primaryId);
+  console.log(`Found primary?`, !!primary, primary);
+  
   if (!primary) {
-    throw new Error(`Primary contact with id ${primaryId} not found in cluster`);
+    throw new Error(`Primary contact with id ${primaryId} not found in cluster. Cluster ids: ${cluster.map(c => c.id).join(", ")}`);
   }
   
   const secondaries = cluster.filter((c) => c.id !== primaryId);
@@ -105,6 +110,7 @@ export async function identify(
 
   // 2. No matches → brand new primary contact
   if (directMatches.length === 0) {
+    console.log("Creating new primary contact with email:", email, "phone:", phoneNumber);
     const result = await dbRun(
       `INSERT INTO Contact (phoneNumber, email, linkedId, linkPrecedence, createdAt, updatedAt)
        VALUES ($1, $2, NULL, 'primary', $3, $4)
@@ -112,10 +118,13 @@ export async function identify(
       [phoneNumber ?? null, email ?? null, now, now]
     );
     
+    console.log("Insert result:", result);
+    
     if (!result.lastID || result.lastID === 0) {
-      throw new Error(`Failed to create new contact. Got lastID: ${result.lastID}`);
+      throw new Error(`Failed to create new contact. Got lastID: ${result.lastID}. Full result: ${JSON.stringify(result)}`);
     }
     
+    console.log("Created new primary contact with id:", result.lastID);
     return buildResponse(result.lastID);
   }
 
