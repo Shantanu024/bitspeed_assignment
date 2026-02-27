@@ -5,7 +5,7 @@ import { Contact, ConsolidatedContact } from "./types";
 
 async function getContactById(id: number): Promise<Contact | undefined> {
   return dbGet<Contact>(
-    "SELECT * FROM Contact WHERE id = ? AND deletedAt IS NULL",
+    "SELECT * FROM Contact WHERE id = $1 AND deletedAt IS NULL",
     [id]
   );
 }
@@ -21,7 +21,7 @@ async function getPrimaryContact(contact: Contact): Promise<Contact> {
 async function getCluster(primaryId: number): Promise<Contact[]> {
   return dbAll<Contact>(
     `SELECT * FROM Contact
-     WHERE (id = ? OR linkedId = ?) AND deletedAt IS NULL`,
+     WHERE (id = $1 OR linkedId = $2) AND deletedAt IS NULL`,
     [primaryId, primaryId]
   );
 }
@@ -64,13 +64,14 @@ export async function identify(
   // 1. Find all contacts matching either email or phoneNumber
   let conditions: string[] = [];
   let params: (string | undefined)[] = [];
+  let paramIndex = 1;
 
   if (email) {
-    conditions.push("email = ?");
+    conditions.push(`email = $${paramIndex++}`);
     params.push(email);
   }
   if (phoneNumber) {
-    conditions.push("phoneNumber = ?");
+    conditions.push(`phoneNumber = $${paramIndex++}`);
     params.push(phoneNumber);
   }
 
@@ -84,7 +85,8 @@ export async function identify(
   if (directMatches.length === 0) {
     const result = await dbRun(
       `INSERT INTO Contact (phoneNumber, email, linkedId, linkPrecedence, createdAt, updatedAt)
-       VALUES (?, ?, NULL, 'primary', ?, ?)`,
+       VALUES ($1, $2, NULL, 'primary', $3, $4)
+       RETURNING id`,
       [phoneNumber ?? null, email ?? null, now, now]
     );
     return buildResponse(result.lastID);
@@ -114,13 +116,13 @@ export async function identify(
 
       // Update the old primary itself
       await dbRun(
-        `UPDATE Contact SET linkedId = ?, linkPrecedence = 'secondary', updatedAt = ? WHERE id = ?`,
+        `UPDATE Contact SET linkedId = $1, linkPrecedence = 'secondary', updatedAt = $2 WHERE id = $3`,
         [truePrimary.id, now, toMerge.id]
       );
 
       // Re-parent all its secondaries to truePrimary
       await dbRun(
-        `UPDATE Contact SET linkedId = ?, updatedAt = ? WHERE linkedId = ? AND deletedAt IS NULL`,
+        `UPDATE Contact SET linkedId = $1, updatedAt = $2 WHERE linkedId = $3 AND deletedAt IS NULL`,
         [truePrimary.id, now, toMerge.id]
       );
     }
@@ -142,7 +144,7 @@ export async function identify(
     // Create a new secondary contact with the new info
     await dbRun(
       `INSERT INTO Contact (phoneNumber, email, linkedId, linkPrecedence, createdAt, updatedAt)
-       VALUES (?, ?, ?, 'secondary', ?, ?)`,
+       VALUES ($1, $2, $3, 'secondary', $4, $5)`,
       [phoneNumber ?? null, email ?? null, truePrimary.id, now, now]
     );
   }

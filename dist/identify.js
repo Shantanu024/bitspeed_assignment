@@ -4,7 +4,7 @@ exports.identify = identify;
 const db_1 = require("./db");
 // ─── Helpers ────────────────────────────────────────────────────────────────
 async function getContactById(id) {
-    return (0, db_1.dbGet)("SELECT * FROM Contact WHERE id = ? AND deletedAt IS NULL", [id]);
+    return (0, db_1.dbGet)("SELECT * FROM Contact WHERE id = $1 AND deletedAt IS NULL", [id]);
 }
 async function getPrimaryContact(contact) {
     if (contact.linkPrecedence === "primary")
@@ -17,7 +17,7 @@ async function getPrimaryContact(contact) {
 /** Fetch all contacts in a cluster (primary + all its secondaries) */
 async function getCluster(primaryId) {
     return (0, db_1.dbAll)(`SELECT * FROM Contact
-     WHERE (id = ? OR linkedId = ?) AND deletedAt IS NULL`, [primaryId, primaryId]);
+     WHERE (id = $1 OR linkedId = $2) AND deletedAt IS NULL`, [primaryId, primaryId]);
 }
 /** Build the consolidated response from a primary's cluster */
 async function buildResponse(primaryId) {
@@ -50,12 +50,13 @@ async function identify(email, phoneNumber) {
     // 1. Find all contacts matching either email or phoneNumber
     let conditions = [];
     let params = [];
+    let paramIndex = 1;
     if (email) {
-        conditions.push("email = ?");
+        conditions.push(`email = $${paramIndex++}`);
         params.push(email);
     }
     if (phoneNumber) {
-        conditions.push("phoneNumber = ?");
+        conditions.push(`phoneNumber = $${paramIndex++}`);
         params.push(phoneNumber);
     }
     const whereClause = conditions.join(" OR ");
@@ -63,7 +64,8 @@ async function identify(email, phoneNumber) {
     // 2. No matches → brand new primary contact
     if (directMatches.length === 0) {
         const result = await (0, db_1.dbRun)(`INSERT INTO Contact (phoneNumber, email, linkedId, linkPrecedence, createdAt, updatedAt)
-       VALUES (?, ?, NULL, 'primary', ?, ?)`, [phoneNumber ?? null, email ?? null, now, now]);
+       VALUES ($1, $2, NULL, 'primary', $3, $4)
+       RETURNING id`, [phoneNumber ?? null, email ?? null, now, now]);
         return buildResponse(result.lastID);
     }
     // 3. Collect all unique primaries across matched contacts
@@ -81,9 +83,9 @@ async function identify(email, phoneNumber) {
         for (let i = 1; i < sortedPrimaries.length; i++) {
             const toMerge = sortedPrimaries[i];
             // Update the old primary itself
-            await (0, db_1.dbRun)(`UPDATE Contact SET linkedId = ?, linkPrecedence = 'secondary', updatedAt = ? WHERE id = ?`, [truePrimary.id, now, toMerge.id]);
+            await (0, db_1.dbRun)(`UPDATE Contact SET linkedId = $1, linkPrecedence = 'secondary', updatedAt = $2 WHERE id = $3`, [truePrimary.id, now, toMerge.id]);
             // Re-parent all its secondaries to truePrimary
-            await (0, db_1.dbRun)(`UPDATE Contact SET linkedId = ?, updatedAt = ? WHERE linkedId = ? AND deletedAt IS NULL`, [truePrimary.id, now, toMerge.id]);
+            await (0, db_1.dbRun)(`UPDATE Contact SET linkedId = $1, updatedAt = $2 WHERE linkedId = $3 AND deletedAt IS NULL`, [truePrimary.id, now, toMerge.id]);
         }
     }
     else {
@@ -98,7 +100,7 @@ async function identify(email, phoneNumber) {
     if (isNewEmail || isNewPhone) {
         // Create a new secondary contact with the new info
         await (0, db_1.dbRun)(`INSERT INTO Contact (phoneNumber, email, linkedId, linkPrecedence, createdAt, updatedAt)
-       VALUES (?, ?, ?, 'secondary', ?, ?)`, [phoneNumber ?? null, email ?? null, truePrimary.id, now, now]);
+       VALUES ($1, $2, $3, 'secondary', $4, $5)`, [phoneNumber ?? null, email ?? null, truePrimary.id, now, now]);
     }
     return buildResponse(truePrimary.id);
 }

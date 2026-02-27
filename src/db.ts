@@ -1,79 +1,80 @@
-import sqlite3 from "sqlite3";
-import path from "path";
-import fs from "fs";
+import { Pool } from "pg";
 
-// Use /data directory on Render (persistent disk), or local path in development
-const DB_DIR = process.env.NODE_ENV === "production" ? "/data" : __dirname;
-const DB_PATH = process.env.NODE_ENV === "production" 
-  ? "/data/contacts.db" 
-  : path.join(__dirname, "..", "contacts.db");
-
-// Ensure /data directory exists on Render
-if (process.env.NODE_ENV === "production" && !fs.existsSync(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true });
-}
-
-const db = new sqlite3.Database(DB_PATH);
-
-// Enabled WAL mode for better performance
-db.run("PRAGMA journal_mode = WAL");
-
-// Created Contact table if it doesn't exist
-db.exec(`
-  CREATE TABLE IF NOT EXISTS Contact (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    phoneNumber     TEXT,
-    email           TEXT,
-    linkedId        INTEGER,
-    linkPrecedence  TEXT NOT NULL CHECK(linkPrecedence IN ('primary', 'secondary')),
-    createdAt       DATETIME NOT NULL DEFAULT (datetime('now')),
-    updatedAt       DATETIME NOT NULL DEFAULT (datetime('now')),
-    deletedAt       DATETIME,
-    FOREIGN KEY (linkedId) REFERENCES Contact(id)
-  );
-`, (err) => {
-  if (err) {
-    console.error("Failed to create table:", err);
-  }
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
-// Helper function to promisify db.get
-export function dbGet<T = any>(
+pool.on("error", (err) => {
+  console.error("Unexpected error on idle client", err);
+});
+
+// Initialize database schema
+async function initDatabase() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS Contact (
+        id              SERIAL PRIMARY KEY,
+        phoneNumber     TEXT,
+        email           TEXT,
+        linkedId        INTEGER,
+        linkPrecedence  TEXT NOT NULL CHECK(linkPrecedence IN ('primary', 'secondary')),
+        createdAt       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        deletedAt       TIMESTAMP,
+        FOREIGN KEY (linkedId) REFERENCES Contact(id)
+      );
+    `);
+    console.log("✅ Database schema initialized");
+  } catch (err) {
+    console.error("Database init error:", err);
+  }
+}
+
+initDatabase();
+
+// Helper function to get single row
+export async function dbGet<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T | undefined> {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row as T | undefined);
-    });
-  });
+  try {
+    const result = await pool.query(sql, params);
+    return result.rows[0] as T | undefined;
+  } catch (err) {
+    console.error("dbGet error:", err);
+    throw err;
+  }
 }
 
-// Helper function to promisify db.all
-export function dbAll<T = any>(
+// Helper function to get all rows
+export async function dbAll<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve((rows || []) as T[]);
-    });
-  });
+  try {
+    const result = await pool.query(sql, params);
+    return result.rows as T[];
+  } catch (err) {
+    console.error("dbAll error:", err);
+    throw err;
+  }
 }
 
-// Helper function to promisify db.run
-export function dbRun(
+// Helper function to run insert/update/delete
+export async function dbRun(
   sql: string,
   params: any[] = []
 ): Promise<{ lastID: number; changes: number }> {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ lastID: this.lastID, changes: this.changes });
-    });
-  });
+  try {
+    const result = await pool.query(sql, params);
+    // For INSERT, get the lastInsertRowid from RETURNING clause
+    const lastID = result.rows[0]?.id || 0;
+    return { lastID, changes: result.rowCount || 0 };
+  } catch (err) {
+    console.error("dbRun error:", err);
+    throw err;
+  }
 }
 
-export default db;
+export default pool;
