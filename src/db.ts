@@ -37,7 +37,6 @@ async function initDatabase() {
     const deleteResult = await pool.query(
       `DELETE FROM Contact WHERE linkPrecedence = 'secondary' AND linkedId IS NULL`
     );
-    }
     
     // 2. Convert secondary contacts with non-existent linkedId to primary
     const convertResult = await pool.query(
@@ -57,8 +56,13 @@ export async function dbGet<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T | undefined> {
-  const result = await pool.query(sql, params);
-  return result.rows[0] as T | undefined;
+  try {
+    const result = await pool.query(sql, params);
+    return result.rows[0] as T | undefined;
+  } catch (err) {
+    console.error("dbGet error:", err);
+    throw err;
+  }
 }
 
 // Helper function to get all rows
@@ -66,8 +70,13 @@ export async function dbAll<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T[]> {
-  const result = await pool.query(sql, params);
-  return result.rows as T[];
+  try {
+    const result = await pool.query(sql, params);
+    return result.rows as T[];
+  } catch (err) {
+    console.error("dbAll error:", err);
+    throw err;
+  }
 }
 
 // Helper function to run insert/update/delete
