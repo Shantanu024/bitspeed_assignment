@@ -10,5 +10,3 @@ services:
         value: production
       - key: PORT
         value: 3000
-      - key: DATABASE_URL
-        value: postgresql://bitspeed_shantanu_user:VxqMOCMlqLQgAGDLXkC3ZuJQeXXy9WWg@dpg-d6gs9evgi27c73ffrmk0-a/bitspeed_shantanu
