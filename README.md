@@ -90,7 +90,7 @@ npm run dev
 
 ```bash
 # Compile TypeScript to JavaScript
-npm run build
+npm install && npm run build
 
 # Start the production server
 npm start
@@ -102,7 +102,7 @@ The server starts on **port 3000** by default. You can change it by setting the 
 
 ## How It Works 🧠
 
-The API uses a simple but powerful algorithm to consolidate customer identities:
+The API uses a simple algorithm to consolidate customer identities:
 
 1. **Brand New Customer?** → Create a new `primary` contact and return it.
 
