@@ -1,8 +1,44 @@
 import { dbAll, dbGet, dbRun } from "./db";
 import { Contact, ConsolidatedContact } from "./types";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+/**
+ * Input validation configuration and utilities
+ */
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const MAX_EMAIL_LENGTH = 255;
+const MAX_PHONE_LENGTH = 20;
 
+/**
+ * Validate email format and length
+ * @throws Error if email is invalid
+ */
+function validateEmail(email: string): void {
+  if (email.length > MAX_EMAIL_LENGTH || !EMAIL_REGEX.test(email)) {
+    throw new Error("Invalid email format");
+  }
+}
+
+/**
+ * Validate phone number format and length
+ * Accepts digits and common formatting characters (spaces, dashes, plus, parentheses)
+ * @throws Error if phone is invalid
+ */
+function validatePhoneNumber(phone: string): void {
+  const cleanPhone = phone.replace(/[\s\-\+\(\)]/g, "");
+  if (cleanPhone.length === 0 || cleanPhone.length > MAX_PHONE_LENGTH || !/^\d+$/.test(cleanPhone)) {
+    throw new Error("Invalid phone number format");
+  }
+}
+
+/**
+ * Helper functions for contact lookup and aggregation
+ */
+
+/**
+ * Fetch a single contact by ID
+ * @param id - Contact ID
+ * @returns Contact or undefined if not found
+ */
 async function getContactById(id: number): Promise<Contact | undefined> {
   return dbGet<Contact>(
     "SELECT * FROM Contact WHERE id = $1 AND deletedAt IS NULL",
@@ -10,6 +46,12 @@ async function getContactById(id: number): Promise<Contact | undefined> {
   );
 }
 
+/**
+ * Resolve a contact to its primary parent
+ * @param contact - Contact to resolve (could be primary or secondary)
+ * @returns The primary contact
+ * @throws Error if contact is secondary with invalid linkedId or parent not found
+ */
 async function getPrimaryContact(contact: Contact): Promise<Contact> {
   if (contact.linkPrecedence === "primary") return contact;
   
@@ -24,16 +66,26 @@ async function getPrimaryContact(contact: Contact): Promise<Contact> {
   return primary;
 }
 
-/** Fetch all contacts in a cluster (primary + all its secondaries) */
+/**
+ * Fetch all contacts in a cluster (primary + all secondary linked contacts)
+ * @param primaryId - ID of the primary contact
+ * @returns All contacts in the cluster, ordered by ID
+ */
 async function getCluster(primaryId: number): Promise<Contact[]> {
   return dbAll<Contact>(
     `SELECT * FROM Contact
-     WHERE (id = $1 OR linkedId = $2) AND deletedAt IS NULL`,
+     WHERE (id = $1 OR linkedId = $2) AND deletedAt IS NULL
+     ORDER BY id ASC`,
     [primaryId, primaryId]
   );
 }
 
-/** Build the consolidated response from a primary's cluster */
+/**
+ * Build the API response by aggregating all contacts in a cluster
+ * @param primaryId - ID of the primary contact
+ * @returns Consolidated contact response with unique emails and phones
+ * @throws Error if primaryId is invalid or cluster not found
+ */
 async function buildResponse(primaryId: number): Promise<ConsolidatedContact> {
   if (!primaryId || primaryId <= 0) {
     throw new Error(`Invalid primaryId: ${primaryId}`);
@@ -50,31 +102,63 @@ async function buildResponse(primaryId: number): Promise<ConsolidatedContact> {
     throw new Error(`Primary contact with id ${primaryId} not found in cluster`);
   }
   
-  const secondaries = cluster.filter((c) => c.id !== primaryId);
-
   const emails: string[] = [];
   const phoneNumbers: string[] = [];
+  const secondaryIds: number[] = [];
+  
+  // Use Set for O(1) lookups
+  const emailSet = new Set<string>();
+  const phoneSet = new Set<string>();
 
   // Primary values come first
-  if (primary.email) emails.push(primary.email);
-  if (primary.phoneNumber) phoneNumbers.push(primary.phoneNumber);
+  if (primary.email) {
+    emailSet.add(primary.email);
+    emails.push(primary.email);
+  }
+  if (primary.phoneNumber) {
+    phoneSet.add(primary.phoneNumber);
+    phoneNumbers.push(primary.phoneNumber);
+  }
 
-  for (const sec of secondaries) {
-    if (sec.email && !emails.includes(sec.email)) emails.push(sec.email);
-    if (sec.phoneNumber && !phoneNumbers.includes(sec.phoneNumber))
-      phoneNumbers.push(sec.phoneNumber);
+  // Add secondaries
+  for (const contact of cluster) {
+    if (contact.id === primaryId) continue;
+    
+    secondaryIds.push(contact.id);
+    
+    if (contact.email && !emailSet.has(contact.email)) {
+      emailSet.add(contact.email);
+      emails.push(contact.email);
+    }
+    if (contact.phoneNumber && !phoneSet.has(contact.phoneNumber)) {
+      phoneSet.add(contact.phoneNumber);
+      phoneNumbers.push(contact.phoneNumber);
+    }
   }
 
   return {
     primaryContactId: primaryId,
     emails,
     phoneNumbers,
-    secondaryContactIds: secondaries.map((s) => s.id),
+    secondaryContactIds: secondaryIds,
   };
 }
 
-// ─── Main identify function ──────────────────────────────────────────────────
-
+/**
+ * Main identity reconciliation function
+ * 
+ * Algorithm:
+ * 1. Find all contacts matching email or phoneNumber
+ * 2. If none exist, create new primary contact
+ * 3. Collect all unique primaries from matched contacts
+ * 4. If multiple primaries exist, merge into the oldest one
+ * 5. If new info (email/phone) not in cluster, create secondary contact
+ * 
+ * @param email - Optional email address
+ * @param phoneNumber - Optional phone number
+ * @returns Consolidated contact with primary ID and linked contacts
+ * @throws Error for invalid input or database errors
+ */
 export async function identify(
   email?: string,
   phoneNumber?: string
@@ -86,18 +170,21 @@ export async function identify(
     throw new Error("At least one of email or phoneNumber is required.");
   }
 
-  // 1. Find all contacts matching either email or phoneNumber
-  let conditions: string[] = [];
-  let params: any[] = [];
-  let paramIndex = 1;
+  // Validate individual inputs
+  if (email) validateEmail(email);
+  if (phoneNumber) validatePhoneNumber(phoneNumber);
+
+  // 1. Build dynamic WHERE clause for matching contacts
+  const params: (string | number | null)[] = [];
+  const conditions: string[] = [];
 
   if (email) {
-    conditions.push(`email = $${paramIndex++}`);
     params.push(email);
+    conditions.push(`email = $${params.length}`);
   }
   if (phoneNumber) {
-    conditions.push(`phoneNumber = $${paramIndex++}`);
     params.push(phoneNumber);
+    conditions.push(`phoneNumber = $${params.length}`);
   }
 
   const whereClause = conditions.join(" OR ");
